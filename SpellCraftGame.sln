@@ -4,10 +4,20 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 17.0.31919.166
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsPlatform", "WindowsPlatform\WindowsPlatform.vcxproj", "{C3C51630-262F-4E22-93CB-B2CDBF01D6B3}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B549E5DC-BD17-4216-A690-8AF4CD781CD9} = {B549E5DC-BD17-4216-A690-8AF4CD781CD9}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WindowsGameDLL", "WindowsGameDLL\WindowsGameDLL.vcxproj", "{B549E5DC-BD17-4216-A690-8AF4CD781CD9}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Game", "Game\Game.vcxitems", "{49149F9A-E932-443F-8937-015AC9066ED2}"
+EndProject
 Global
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		Game\Game.vcxitems*{49149f9a-e932-443f-8937-015ac9066ed2}*SharedItemsImports = 9
+		Game\Game.vcxitems*{b549e5dc-bd17-4216-a690-8af4cd781cd9}*SharedItemsImports = 4
+		Game\Game.vcxitems*{c3c51630-262f-4e22-93cb-b2cdbf01d6b3}*SharedItemsImports = 4
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86

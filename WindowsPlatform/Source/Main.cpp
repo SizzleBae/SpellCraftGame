@@ -3,9 +3,19 @@
 
 #define WIN32_LEAN_AND_MEAN 
 #include <windows.h>
+
 #include <stdlib.h>
 #include <string.h>
 #include <tchar.h>
+#include <iostream>
+#include <string>
+
+#include <Source/Platform.h>
+
+
+DEBUG_LOG(DebugLog) {
+    int i = 0;
+}
 
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
 //
@@ -44,8 +54,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return 0;
 }
 
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int nCmdShow)
 {
+    AllocConsole();
+
+    HMODULE GameDLLHandle = LoadLibraryA(".\\WindowsGameDLL.dll");
+    if (!GameDLLHandle)
+    {
+        MessageBox(NULL,
+            _T("Failed to load game DLL!"),
+            _T("SpellCraft Game"),
+            NULL);
+
+        return 1;
+    }
+
+    game_update_and_render *GameUpdateAndRender = 
+        (game_update_and_render*)GetProcAddress(GameDLLHandle, "GameUpdateAndRender");
+
+    game_memory GameMemory{};
+    GameMemory.DebugLog = &DebugLog;
+
+    GameUpdateAndRender(&GameMemory);
+
     // The main window class name.
     TCHAR szWindowClass[] = _T("SpellCraftGame");
 
@@ -58,7 +89,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     wcex.lpfnWndProc = WndProc;
     wcex.cbClsExtra = 0;
     wcex.cbWndExtra = 0;
-    wcex.hInstance = hInstance;
+    wcex.hInstance = Instance;
     wcex.hIcon = LoadIcon(wcex.hInstance, IDI_APPLICATION);
     wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
     wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
@@ -70,7 +101,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
         MessageBox(NULL,
             _T("Call to RegisterClassEx failed!"),
-            _T("Windows Desktop Guided Tour"),
+            _T("SpellCraft Game"),
             NULL);
 
         return 1;
@@ -85,7 +116,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         1000, 800,                          // Initial size (width, length)
         NULL,                               // The parent of this window
         NULL,                               // This application does not have a menu bar
-        hInstance,                          // The first parameter from WinMain
+        Instance,                          // The first parameter from WinMain
         NULL                                // Not used in this application
     );
 
@@ -93,7 +124,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
         MessageBox(NULL,
             _T("Call to CreateWindow failed!"),
-            _T("Windows Desktop Guided Tour"),
+            _T("SpellCraft Game"),
             NULL);
 
         return 1;
@@ -109,6 +140,5 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
-
     return (int)msg.wParam;
 }
