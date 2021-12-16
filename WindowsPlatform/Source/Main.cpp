@@ -1,6 +1,3 @@
-// HelloWindowsDesktop.cpp
-// compile with: /D_UNICODE /DUNICODE /DWIN32 /D_WINDOWS /c
-
 #define WIN32_LEAN_AND_MEAN 
 #include <windows.h>
 
@@ -9,9 +6,12 @@
 #include <tchar.h>
 #include <iostream>
 #include <string>
+#include <io.h>
+#include <fcntl.h>
 
 #include <Source/Platform.h>
 
+game_memory GameMemory{};
 
 DEBUG_LOG(DebugLog) {
     int i = 0;
@@ -20,9 +20,6 @@ DEBUG_LOG(DebugLog) {
 //  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
 //
 //  PURPOSE:  Processes messages for the main window.
-//
-//  WM_PAINT    - Paint the main window
-//  WM_DESTROY  - post a quit message and return
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message) {
@@ -34,11 +31,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             // Here your application is laid out.
             TCHAR greeting[] = _T("Greetings, Spell Crafter!");
             TextOut(hdc, 50, 50, greeting, _tcslen(greeting));
+
+            TextOut(hdc, 50, 190, (LPCWSTR) &GameMemory.TestChar, 1);
             // End application-specific layout section.
 
             EndPaint(hWnd, &ps);
             break;
         } 
+        case WM_KEYDOWN:
+        {
+            switch (wParam) {
+            case 'B': 
+            {
+                GameMemory.TestChar = wParam;
+                break;
+            }
+            default:
+                break;
+            }
+            break;
+        }
         case WM_DESTROY: 
         {
             PostQuitMessage(0);
@@ -58,6 +70,16 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
 {
     AllocConsole();
 
+    // set the screen buffer to be big enough to let us scroll text
+    CONSOLE_SCREEN_BUFFER_INFO coninfo;
+    GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &coninfo);
+    coninfo.dwSize.Y = 500;
+    SetConsoleScreenBufferSize(GetStdHandle(STD_OUTPUT_HANDLE), coninfo.dwSize);
+
+    //TODO(sizzle): This is appearantly unsafe?
+    freopen("CONOUT$", "wb", stdout);
+    freopen("CONOUT$", "wb", stderr);
+
     HMODULE GameDLLHandle = LoadLibraryA(".\\WindowsGameDLL.dll");
     if (!GameDLLHandle)
     {
@@ -72,10 +94,10 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
     game_update_and_render *GameUpdateAndRender = 
         (game_update_and_render*)GetProcAddress(GameDLLHandle, "GameUpdateAndRender");
 
-    game_memory GameMemory{};
+    game_input GameInput{};
     GameMemory.DebugLog = &DebugLog;
 
-    GameUpdateAndRender(&GameMemory);
+    GameUpdateAndRender(&GameMemory, &GameInput);
 
     // The main window class name.
     TCHAR szWindowClass[] = _T("SpellCraftGame");
@@ -131,14 +153,25 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
     }
 
     ShowWindow(hWnd, nCmdShow);
-    UpdateWindow(hWnd);
 
-    // Main message loop:
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0))
-    {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+    bool Run = true;
+    int ExitCode = 0;
+    while (Run) {
+        // Main message loop:
+        MSG Message;
+        while (PeekMessage(&Message, NULL, 0, 0, PM_REMOVE))
+        {
+            if (Message.message == WM_QUIT) {
+                Run = false;
+                ExitCode = Message.wParam;
+                break;
+            }
+            TranslateMessage(&Message);
+            DispatchMessage(&Message);
+        }
+
+        UpdateWindow(hWnd);
+
     }
-    return (int)msg.wParam;
+    return ExitCode;
 }
