@@ -146,7 +146,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalOptions>-EXPORT:GameUpdateAndRender %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-EXPORT:GameUpdateAndRender -EXPORT:GameOutputSound %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
