@@ -38,5 +38,5 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
-	GameMemory->DebugLog("HELLO FROM GAME SOUND!");
+	//GameMemory->DebugLog("HELLO FROM GAME SOUND!");
 }
