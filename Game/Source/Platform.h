@@ -30,8 +30,26 @@ constexpr float Pi32 = 3.14159265359f;
 #define Gigabytes(Value) (Megabytes(Value)*1024LL)
 #define Terabytes(Value) (Gigabytes(Value)*1024LL)
 
-#define DEBUG_LOG(name) void name(const char *Message)
-typedef DEBUG_LOG(debug_log);
+#include <string>
+
+// LOGGING
+struct log_category
+{
+	const char* Name;
+};
+
+struct log_verbosity
+{
+	const char* Name;
+	uint32 Level;
+};
+
+global_variable log_verbosity Verbose{ .Name = "All", .Level = 0 };
+global_variable log_verbosity Warning{ .Name = "Warning", .Level = 1 };
+global_variable log_verbosity Error{ .Name = "Error", .Level = 2 };
+
+#define LOG(name) void name(const log_category &Category, const log_verbosity &Verbosity, const std::string &Message)
+typedef LOG(engine_log);
 
 struct screen_buffer {
 	uint32 *XRGB;
@@ -53,7 +71,7 @@ struct game_memory {
 	uint64 TransientStorageSize;
 	void *TransientStorage; 
 
-	debug_log *DebugLog;
+	engine_log *Log;
 };
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory *GameMemory, game_input *GameInput, screen_buffer *OutScreenBuffer)

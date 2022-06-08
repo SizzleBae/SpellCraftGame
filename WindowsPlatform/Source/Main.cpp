@@ -2,12 +2,16 @@
 #include <dsound.h>
 #include <wingdi.h>
 
+#include <vulkan/vulkan.h>
+
 #include <tchar.h>
 #include <iostream>
 #include <format>
+#include <vector>
 
 #include <Source/Platform.h>
- 
+
+
 struct win32_screen_buffer {
     int32 Width;
     int32 Height;
@@ -17,8 +21,18 @@ struct win32_screen_buffer {
 
 global_variable win32_screen_buffer GlobalScreenBuffer;
 
-DEBUG_LOG(DebugLog) {
-    std::cout << Message << std::endl;
+// Logging
+global_variable log_category LogWindowsPlatform = { .Name = "WindowsPlatform" };
+global_variable log_category LogVulkan = { .Name = "Vulkan" };
+global_variable log_category LogWindowsVulkan = { .Name = "WindowsVulkan" };
+
+global_variable log_verbosity& AllowedVerbosity = Verbose;
+
+LOG(DebugLog) {
+    if(Verbosity.Level >= AllowedVerbosity.Level)
+    {
+        std::cout << Category.Name << "(" << Verbosity.Name << "): " << Message << std::endl;
+    }
 }
 
 void LogLastWindowsError()
@@ -36,7 +50,7 @@ void LogLastWindowsError()
         (LPSTR)&ErrorDescription,
         0, nullptr);
 
-    std::cerr << "Windows Error (" << ErrorCode << ") " << ErrorDescription << std::endl;
+    DebugLog(LogWindowsPlatform, Error, std::format("({}) {}", ErrorCode, ErrorDescription));
 
     LocalFree(ErrorDescription);
 }
@@ -104,7 +118,7 @@ void SaveGameState(int32 Slot, game_memory *State)
 {
     std::string FileName = std::format("save_{}", Slot);
 
-    std::cout << "SAVE: " << FileName << std::endl;
+    DebugLog(LogWindowsPlatform, Verbose, std::format("SAVE: {}", FileName));
 
     Assert(State->PermanentStorageSize < MAXUINT32)
     WriteEntireFile(FileName.c_str(), State->PermanentStorage, State->PermanentStorageSize);
@@ -114,7 +128,7 @@ void LoadGameState(int32 Slot, game_memory *State)
 {
     std::string FileName = std::format("save_{}", Slot);
 
-    std::cout << "LOAD: " << FileName << std::endl;
+    DebugLog(LogWindowsPlatform, Verbose, std::format("LOAD: {}", FileName));
 
     Assert(State->PermanentStorageSize < MAXUINT32)
         ReadEntireFile(FileName.c_str(), State->PermanentStorage, State->PermanentStorageSize);
@@ -183,6 +197,29 @@ LRESULT CALLBACK WindowCallback(HWND Window, UINT Message, WPARAM WParam, LPARAM
     }
 
     return 0;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT MessageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT MessageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* CallbackData,
+    void* UserData) {
+
+    log_verbosity Verbosity;
+    switch(MessageSeverity)
+    {
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT:
+        Verbosity = Error;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
+        Verbosity = Warning;
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: 
+    case VK_DEBUG_UTILS_MESSAGE_SEVERITY_FLAG_BITS_MAX_ENUM_EXT: 
+        Verbosity = Verbose;
+    }
+    DebugLog(LogVulkan, Verbosity, std::string(CallbackData->pMessage));
+
+    return VK_FALSE;
 }
 
 int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine, int nCmdShow)
@@ -267,7 +304,7 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
     game_memory GameMemory{};
     GameMemory.PermanentStorageSize = Megabytes(256);
     GameMemory.TransientStorageSize = Gigabytes(1);
-    GameMemory.DebugLog = &DebugLog;
+    GameMemory.Log = &DebugLog;
 
     uint64 TotalSize = GameMemory.PermanentStorageSize + GameMemory.TransientStorageSize;
     void *GameMemoryBlock = VirtualAlloc(nullptr, TotalSize, //TODO(sizzle): use base address
@@ -293,6 +330,123 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
     GlobalScreenBuffer.Info.bmiHeader.biPlanes = 1;
     GlobalScreenBuffer.Info.bmiHeader.biBitCount = 32;
     GlobalScreenBuffer.Info.bmiHeader.biCompression = BI_RGB;
+
+    /// VULKAN
+    // EXTENSIONS
+    uint32 AvailableExtensionCount = 0;
+    vkEnumerateInstanceExtensionProperties(nullptr, &AvailableExtensionCount, nullptr);
+    std::vector<VkExtensionProperties> AvailableExtensions(AvailableExtensionCount);
+    vkEnumerateInstanceExtensionProperties(nullptr, &AvailableExtensionCount, AvailableExtensions.data());
+
+    const std::vector DesiredExtensions = {
+        "VK_KHR_surface",
+		"VK_KHR_win32_surface",
+#ifndef NDEBUG
+        VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+#endif
+    };
+
+    for (const char* DesiredExtension : DesiredExtensions)
+    {
+        bool ExtensionAvailable = false;
+        for (VkExtensionProperties& ExtensionProperties : AvailableExtensions)
+        {
+            if (std::strcmp(ExtensionProperties.extensionName, DesiredExtension) == 0)
+            {
+                ExtensionAvailable = true;
+            }
+        }
+        if (!ExtensionAvailable)
+        {
+            DebugLog(LogWindowsVulkan, Error, std::format("Extension '{}' not available!", DesiredExtension));
+        }
+    }
+    //for(VkExtensionProperties &ExtensionProperties : AvailableExtensions)
+    //{
+    //    Log(ExtensionProperties.extensionName);
+    //    Log("\n");
+    //    DesiredExtensions.push_back(ExtensionProperties.extensionName); // TODO(sizzle): We are enabling everything, stupid :)
+    //}
+
+    // VALIDATION LAYERS
+    uint32 AvailableValidationLayers = 0;
+    vkEnumerateInstanceLayerProperties(&AvailableValidationLayers, nullptr);
+    std::vector<VkLayerProperties> AvailableLayers(AvailableValidationLayers);
+    vkEnumerateInstanceLayerProperties(&AvailableValidationLayers, AvailableLayers.data());
+
+    //for(VkLayerProperties &LayerProperties : AvailableLayers)
+    //{
+    //    Log(LayerProperties.layerName);
+    //    Log(LayerProperties.description);
+    //    Log("\n");
+    //}
+
+    const std::vector DesiredValidationLayers = {
+        "VK_LAYER_KHRONOS_validation"
+    };
+
+    for(const char* DesiredValidationLayer : DesiredValidationLayers)
+    {
+        bool LayerAvailable = false;
+	    for (VkLayerProperties& LayerProperties : AvailableLayers)
+	    {
+		    if(std::strcmp(LayerProperties.layerName, DesiredValidationLayer) == 0)
+		    {
+                LayerAvailable = true;
+		    }
+	    }
+        if(!LayerAvailable)
+        {
+            DebugLog(LogWindowsVulkan, Error, std::format("Layer '{}' not available!", DesiredValidationLayer).c_str());
+        }
+    }
+
+#ifdef NDEBUG
+    constexpr bool EnableValidationLayers = false;
+#else
+    constexpr bool EnableValidationLayers = true;
+#endif
+
+    VkDebugUtilsMessengerCreateInfoEXT VkDebugCreate{};
+    VkDebugCreate.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    VkDebugCreate.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    VkDebugCreate.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    VkDebugCreate.pfnUserCallback = VulkanDebugCallback;
+
+    VkApplicationInfo VkAppInfo{};
+    VkAppInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    VkAppInfo.pApplicationName = "SimulationEngine";
+    VkAppInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    VkAppInfo.pEngineName = "SimulationEngine";
+    VkAppInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    VkAppInfo.apiVersion = VK_API_VERSION_1_3;
+
+    VkInstanceCreateInfo VkCreateInfo{};
+    VkCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+    VkCreateInfo.pApplicationInfo = &VkAppInfo;
+    VkCreateInfo.enabledExtensionCount = static_cast<uint32>(DesiredExtensions.size());
+    VkCreateInfo.ppEnabledExtensionNames = DesiredExtensions.data();
+    if(EnableValidationLayers)
+    {
+        VkCreateInfo.enabledLayerCount = static_cast<uint32>(DesiredValidationLayers.size());
+        VkCreateInfo.ppEnabledLayerNames = DesiredValidationLayers.data();
+        VkCreateInfo.pNext = &VkDebugCreate;
+    }
+	else
+    {
+        VkCreateInfo.enabledLayerCount = 0;
+    }
+
+    
+    VkInstance VkInstance;
+    if(vkCreateInstance(&VkCreateInfo, nullptr, &VkInstance) != VK_SUCCESS)
+    {
+        DebugLog(LogWindowsVulkan, Error, "Failed to create LogVulkan instance");
+    }
+    VkDebugUtilsMessengerEXT VkDebugMessenger;
+    if (auto VkCreateDebugUtilsMessengerExt = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(VkInstance, "vkCreateDebugUtilsMessengerEXT"); VkCreateDebugUtilsMessengerExt != nullptr) {
+    	VkCreateDebugUtilsMessengerExt(VkInstance, &VkDebugCreate, nullptr, &VkDebugMessenger);
+    }
 
     bool Run = true;
     int ExitCode = 0;
@@ -385,6 +539,8 @@ int WINAPI WinMain(HINSTANCE Instance, HINSTANCE PrevInstance, LPSTR CommandLine
         Sleep(16);
 
     }
+
+    vkDestroyInstance(VkInstance, nullptr); //TODO(sizzle): Is this necessary?
 
     return ExitCode;
 }
